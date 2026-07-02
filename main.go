@@ -1,0 +1,266 @@
+// kube-why looks up a Kubernetes error and prints what it means, why it
+// usually happens, and how to fix it. No network calls, no dependencies,
+// everything ships baked into the binary.
+package main
+
+import (
+	"embed"
+	"fmt"
+	"math/rand"
+	"os"
+	"path"
+	"sort"
+	"strings"
+	"time"
+)
+
+//go:embed errors/*.md
+var errorFiles embed.FS
+
+const (
+	colorReset  = "\033[0m"
+	colorBold   = "\033[1m"
+	colorCyan   = "\033[36m"
+	colorGreen  = "\033[32m"
+	colorDim    = "\033[2m"
+	colorYellow = "\033[33m"
+)
+
+type entry struct {
+	slug     string
+	title    string
+	aliases  []string
+	category string
+	body     string
+}
+
+func main() {
+	entries, err := loadEntries()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "kube-why: failed to load entries:", err)
+		os.Exit(1)
+	}
+
+	args := os.Args[1:]
+	if len(args) == 0 {
+		printUsage(entries)
+		return
+	}
+
+	switch args[0] {
+	case "-h", "--help", "help":
+		printUsage(entries)
+	case "list":
+		printList(entries)
+	case "random":
+		printEntry(entries[rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(entries))])
+	default:
+		term := normalize(strings.Join(args, " "))
+		if e := find(entries, term); e != nil {
+			printEntry(*e)
+			return
+		}
+		fmt.Printf("kube-why: no entry found for %q\n\n", strings.Join(args, " "))
+		suggestions := suggest(entries, term)
+		if len(suggestions) > 0 {
+			fmt.Println("Did you mean:")
+			for _, s := range suggestions {
+				fmt.Printf("  %s\n", s)
+			}
+			fmt.Println()
+		}
+		fmt.Println("Run 'kube-why list' to see everything covered so far.")
+		fmt.Println("Don't see yours? Add it: https://github.com/Ayushmore1214/kube-why/blob/main/CONTRIBUTING.md")
+		os.Exit(1)
+	}
+}
+
+func loadEntries() ([]entry, error) {
+	files, err := errorFiles.ReadDir("errors")
+	if err != nil {
+		return nil, err
+	}
+
+	var entries []entry
+	for _, f := range files {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".md") {
+			continue
+		}
+		raw, err := errorFiles.ReadFile(path.Join("errors", f.Name()))
+		if err != nil {
+			return nil, err
+		}
+		e, err := parseEntry(strings.TrimSuffix(f.Name(), ".md"), string(raw))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", f.Name(), err)
+		}
+		entries = append(entries, e)
+	}
+
+	sort.Slice(entries, func(i, j int) bool { return entries[i].title < entries[j].title })
+	return entries, nil
+}
+
+// parseEntry reads a minimal YAML-ish frontmatter block:
+//
+//	---
+//	title: CrashLoopBackOff
+//	aliases: [crashloop, crash-loop-backoff]
+//	category: pod
+//	---
+//	<body>
+func parseEntry(slug, raw string) (entry, error) {
+	e := entry{slug: slug}
+	lines := strings.Split(raw, "\n")
+
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return e, fmt.Errorf("missing frontmatter")
+	}
+
+	i := 1
+	for ; i < len(lines); i++ {
+		line := lines[i]
+		if strings.TrimSpace(line) == "---" {
+			i++
+			break
+		}
+		key, val, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		val = strings.TrimSpace(val)
+		switch key {
+		case "title":
+			e.title = val
+		case "category":
+			e.category = val
+		case "aliases":
+			val = strings.TrimPrefix(val, "[")
+			val = strings.TrimSuffix(val, "]")
+			for _, a := range strings.Split(val, ",") {
+				a = strings.TrimSpace(a)
+				if a != "" {
+					e.aliases = append(e.aliases, a)
+				}
+			}
+		}
+	}
+
+	if e.title == "" {
+		return e, fmt.Errorf("missing title in frontmatter")
+	}
+
+	e.body = strings.TrimLeft(strings.Join(lines[i:], "\n"), "\n")
+	return e, nil
+}
+
+func normalize(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.ReplaceAll(s, " ", "")
+	s = strings.ReplaceAll(s, "_", "")
+	s = strings.ReplaceAll(s, "-", "")
+	return s
+}
+
+func find(entries []entry, term string) *entry {
+	for i, e := range entries {
+		if normalize(e.slug) == term || normalize(e.title) == term {
+			return &entries[i]
+		}
+		for _, a := range e.aliases {
+			if normalize(a) == term {
+				return &entries[i]
+			}
+		}
+	}
+	// fall back to substring match if nothing matched exactly
+	for i, e := range entries {
+		if strings.Contains(normalize(e.title), term) {
+			return &entries[i]
+		}
+	}
+	return nil
+}
+
+func suggest(entries []entry, term string) []string {
+	var out []string
+	for _, e := range entries {
+		if strings.Contains(normalize(e.title), term[:min(3, len(term))]) {
+			out = append(out, e.title)
+		}
+	}
+	if len(out) > 5 {
+		out = out[:5]
+	}
+	return out
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func printUsage(entries []entry) {
+	fmt.Printf("%skube-why%s — look up what a Kubernetes error means and how to fix it\n\n", colorBold, colorReset)
+	fmt.Println("Usage:")
+	fmt.Println("  kube-why <error>       print what it means, why it happens, how to fix it")
+	fmt.Println("  kube-why list          list every error currently covered")
+	fmt.Println("  kube-why random        print a random one")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  kube-why crashloopbackoff")
+	fmt.Println("  kube-why oomkilled")
+	fmt.Println("  kube-why \"image pull backoff\"")
+	fmt.Printf("\n%d errors covered. Run 'kube-why list' to see them all.\n", len(entries))
+}
+
+func printList(entries []entry) {
+	byCategory := map[string][]entry{}
+	for _, e := range entries {
+		byCategory[e.category] = append(byCategory[e.category], e)
+	}
+	var categories []string
+	for c := range byCategory {
+		categories = append(categories, c)
+	}
+	sort.Strings(categories)
+
+	for _, c := range categories {
+		fmt.Printf("%s%s%s%s\n", colorBold, colorCyan, strings.ToUpper(c), colorReset)
+		for _, e := range byCategory[c] {
+			fmt.Printf("  %-28s %s\n", e.title, colorDim+e.slug+colorReset)
+		}
+		fmt.Println()
+	}
+}
+
+func printEntry(e entry) {
+	for _, line := range strings.Split(e.body, "\n") {
+		switch {
+		case strings.HasPrefix(line, "# "):
+			fmt.Printf("%s%s%s\n", colorBold, strings.TrimPrefix(line, "# "), colorReset)
+		case strings.HasPrefix(line, "## "):
+			fmt.Printf("%s%s%s%s\n", colorBold, colorCyan, strings.TrimPrefix(line, "## "), colorReset)
+		case strings.HasPrefix(strings.TrimSpace(line), "```"):
+			// skip fence markers (indented or not), color the code lines instead
+			continue
+		case strings.HasPrefix(line, "- "), strings.HasPrefix(line, "  - "):
+			fmt.Printf("%s%s%s\n", colorYellow, line, colorReset)
+		default:
+			fmt.Println(colorizeInline(line))
+		}
+	}
+}
+
+// colorizeInline dims lines that look like shell commands (rough heuristic:
+// starts with kubectl, or is indented as part of a fenced block).
+func colorizeInline(line string) string {
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, "kubectl") || strings.HasPrefix(trimmed, "$") {
+		return colorGreen + line + colorReset
+	}
+	return line
+}

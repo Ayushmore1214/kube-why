@@ -1,0 +1,25 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+      - name: build
+        run: go build -o kube-why .
+      - name: vet
+        run: go vet ./...
+      - name: check every entry has valid frontmatter and resolves
+        run: |
+          for f in errors/*.md; do
+            slug=$(basename "$f" .md)
+            ./kube-why "$slug" > /dev/null || { echo "FAILED: $slug did not resolve"; exit 1; }
+          done
