@@ -17,9 +17,5 @@ jobs:
         run: go build -o kube-why .
       - name: vet
         run: go vet ./...
-      - name: check every entry has valid frontmatter and resolves
-        run: |
-          for f in errors/*.md; do
-            slug=$(basename "$f" .md)
-            ./kube-why "$slug" > /dev/null || { echo "FAILED: $slug did not resolve"; exit 1; }
-          done
+      - name: test
+        run: go test ./... -v

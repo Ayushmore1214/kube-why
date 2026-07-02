@@ -6,6 +6,7 @@ package main
 import (
 	"embed"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
 	"path"
@@ -16,6 +17,10 @@ import (
 
 //go:embed errors/*.md
 var errorFiles embed.FS
+
+// version is set at build time via -ldflags "-X main.version=...".
+// GoReleaser sets this to the tag on every release build.
+var version = "dev"
 
 const (
 	colorReset  = "\033[0m"
@@ -43,6 +48,10 @@ func main() {
 
 	args := os.Args[1:]
 	if len(args) == 0 {
+		if isPiped(os.Stdin) {
+			scanPipedInput(entries, os.Stdin)
+			return
+		}
 		printUsage(entries)
 		return
 	}
@@ -50,6 +59,8 @@ func main() {
 	switch args[0] {
 	case "-h", "--help", "help":
 		printUsage(entries)
+	case "-v", "--version", "version":
+		fmt.Println("kube-why", version)
 	case "list":
 		printList(entries)
 	case "random":
@@ -181,6 +192,62 @@ func find(entries []entry, term string) *entry {
 		}
 	}
 	return nil
+}
+
+// isPiped reports whether stdin is connected to a pipe rather than a
+// terminal, so `kubectl describe pod X | kube-why` is auto-detected without
+// needing an explicit flag.
+func isPiped(f *os.File) bool {
+	stat, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return (stat.Mode() & os.ModeCharDevice) == 0
+}
+
+// scanPipedInput reads raw kubectl output (describe pod, get events, etc.)
+// and matches any known error signature found in it. Reason strings like
+// CrashLoopBackOff or OOMKilled appear verbatim, with no spaces or hyphens,
+// in real kubectl output, so a plain substring check on a de-hyphenated,
+// lowercased copy of the input is enough, no parsing of kubectl's output
+// format required. Aliases under 5 characters are skipped here (but still
+// work for direct lookups) since short tokens like "oom" risk matching
+// unrelated words in arbitrary pasted text.
+func scanPipedInput(entries []entry, r io.Reader) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "kube-why: failed to read stdin:", err)
+		os.Exit(1)
+	}
+	haystack := strings.ReplaceAll(strings.ToLower(string(data)), "-", "")
+
+	var matches []entry
+	for _, e := range entries {
+		candidates := append([]string{e.slug, e.title}, e.aliases...)
+		for _, c := range candidates {
+			needle := normalize(c)
+			if len(needle) < 5 {
+				continue
+			}
+			if strings.Contains(haystack, needle) {
+				matches = append(matches, e)
+				break
+			}
+		}
+	}
+
+	if len(matches) == 0 {
+		fmt.Println("kube-why: didn't recognize an error pattern in that input.")
+		fmt.Println("Run 'kube-why list' to see everything covered, or pass the error name directly.")
+		os.Exit(1)
+	}
+
+	for i, e := range matches {
+		if i > 0 {
+			fmt.Println(strings.Repeat("-", 60))
+		}
+		printEntry(e)
+	}
 }
 
 func suggest(entries []entry, term string) []string {

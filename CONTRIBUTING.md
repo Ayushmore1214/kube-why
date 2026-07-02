@@ -50,8 +50,11 @@ there's a quick mitigation and a real fix, say which is which.
 Two or three other entries someone debugging this might also need.
 ```
 
-`category` should be one of: `pod`, `deployment`, `scheduling`, `node`, or a
-new one if none of those fit (say why in the PR).
+`category` should be one of: `pod`, `deployment`, `scheduling`, `node`,
+`networking`, `ingress`, `job`, `hpa`, `namespace`, `webhook`, `helm`,
+`storage`, `statefulset`, `quota`, `podsecurity`, `apiserver`,
+`container-runtime`, `rbac`, or a new one if none of those fit (say why in
+the PR).
 
 ## What makes a good entry
 

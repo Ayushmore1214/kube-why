@@ -19,6 +19,16 @@ Common causes
 ...
 ```
 
+It also reads real `kubectl` output directly, no need to already know the
+error name:
+
+```
+$ kubectl describe pod myapp-7f9c8d6b5 | kube-why
+
+CrashLoopBackOff
+...
+```
+
 ## Why this exists
 
 Every Kubernetes error message is cryptic on purpose, it's a status code, not
@@ -29,7 +39,13 @@ terminal, with no ads and no scrolling past a life story to get to the fix.
 
 ## Install
 
-Requires Go 1.21+.
+macOS/Linux, via Homebrew:
+
+```
+brew install ayushmore1214/tap/kube-why
+```
+
+Or, with Go 1.21+:
 
 ```
 go install github.com/Ayushmore1214/kube-why@latest
@@ -43,26 +59,34 @@ cd kube-why
 go build -o kube-why .
 ```
 
+Prebuilt binaries for macOS, Linux, and Windows (amd64/arm64) are attached to
+every [release](https://github.com/Ayushmore1214/kube-why/releases) if you'd
+rather skip all of the above.
+
 ## Usage
 
 ```
 kube-why <error>      # what it means, why, how to fix it
-kube-why list         # everything currently covered, by category
-kube-why random       # a random one, for when you're bored or teaching
+kube-why list          # everything currently covered, by category
+kube-why random        # a random one, for when you're bored or teaching
+<kubectl cmd> | kube-why   # auto-detect the error from real kubectl output
 ```
 
 Lookups are forgiving. `kube-why crashloopbackoff`, `kube-why CrashLoopBackOff`,
 and `kube-why "crash loop backoff"` all resolve to the same entry.
 
+Piping works with anything that has the error's reason string in it:
+`kubectl describe pod`, `kubectl get events`, `kubectl describe deployment`,
+even a pasted Slack message from your incident channel. If more than one
+known error shows up in the input, it prints all of them.
+
 ## What's covered right now
 
-Fourteen of the errors you'll actually hit running real workloads:
-`CrashLoopBackOff`, `ImagePullBackOff`, `OOMKilled`, `Pending`, `Evicted`,
-`CreateContainerConfigError`, `InvalidImageName`, stuck `ContainerCreating`,
-stuck `Terminating`, `ProgressDeadlineExceeded`, `FailedScheduling`,
-`ReadinessProbeFailed`, `NodeNotReady`, `FailedMount`.
+50 errors spanning pods, scheduling, deployments, jobs, HPAs, storage,
+networking, ingress, RBAC, webhooks, Helm, and node-level conditions, not
+just the handful of pod-level basics most references stop at.
 
-Run `kube-why list` for the current, authoritative list.
+Run `kube-why list` for the current, authoritative, categorized list.
 
 ## Contributing
 
@@ -78,9 +102,12 @@ open an issue, that's just as useful.
 
 Rough order, not promises:
 
-- More entries: Helm, Terraform, and Docker errors, not just raw Kubernetes.
 - A `kubectl` plugin (`kubectl why <error>`) via krew, so it lives where
   you're already working.
+- `kube-why scan` — inspect your current cluster context directly and
+  surface which of your pods are unhealthy and why, no manual lookup needed.
+- More entries: Terraform and Docker/containerd-level errors, not just
+  Kubernetes-native ones.
 - Each entry linking to a one-command way to reproduce it in a local `kind`
   cluster, so you can practice recognizing and fixing it before you hit it
   for real.
