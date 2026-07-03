@@ -171,6 +171,68 @@ func TestRelatedEntriesResolve(t *testing.T) {
 	}
 }
 
+func TestLintFileValidYAML(t *testing.T) {
+	docs := lintFile([]byte("a: 1\nb: 2\n"))
+	if len(docs) != 1 || !docs[0].Valid {
+		t.Fatalf("lintFile() = %+v, want one valid document", docs)
+	}
+}
+
+func TestLintFileInvalidYAML(t *testing.T) {
+	docs := lintFile([]byte("a: 1\n\tb: 2\n"))
+	if len(docs) != 1 || docs[0].Valid || docs[0].Error == "" {
+		t.Fatalf("lintFile() = %+v, want one invalid document with an error message", docs)
+	}
+}
+
+func TestLintFileMultiDocument(t *testing.T) {
+	docs := lintFile([]byte("a: 1\n---\nb: 2\n---\n"))
+	if len(docs) != 2 {
+		t.Fatalf("lintFile() returned %d documents, want 2 (trailing empty doc shouldn't count)", len(docs))
+	}
+	for _, d := range docs {
+		if !d.Valid {
+			t.Errorf("document %d: expected valid, got error %q", d.Index, d.Error)
+		}
+	}
+}
+
+func TestParseSectionsSplitsOnHeadings(t *testing.T) {
+	body := "# Title\nintro line, dropped\n## What it means\nline one\nline two\n## Fix it\nfix line\n"
+	sections := parseSections(body)
+	if len(sections) != 2 {
+		t.Fatalf("parseSections() returned %d sections, want 2", len(sections))
+	}
+	if sections[0].Heading != "What it means" || sections[0].Body != "line one\nline two" {
+		t.Errorf("section[0] = %+v", sections[0])
+	}
+	if sections[1].Heading != "Fix it" || sections[1].Body != "fix line" {
+		t.Errorf("section[1] = %+v", sections[1])
+	}
+}
+
+func TestCandidateNamesCoversEverySlugAndSubcommand(t *testing.T) {
+	entries, err := loadEntries()
+	if err != nil {
+		t.Fatalf("loadEntries() failed: %v", err)
+	}
+	names := candidateNames(entries)
+	seen := map[string]bool{}
+	for _, n := range names {
+		seen[n] = true
+	}
+	for _, sub := range subcommands {
+		if !seen[sub] {
+			t.Errorf("candidateNames() is missing subcommand %q", sub)
+		}
+	}
+	for _, e := range entries {
+		if !seen[e.slug] {
+			t.Errorf("candidateNames() is missing entry slug %q", e.slug)
+		}
+	}
+}
+
 func TestParseEntryParsesAliasesList(t *testing.T) {
 	raw := "---\ntitle: Example\naliases: [one, two, three]\ncategory: pod\n---\nbody text\n"
 	e, err := parseEntry("example", raw)

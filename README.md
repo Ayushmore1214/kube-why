@@ -1,5 +1,10 @@
 # kube-why
 
+[![CI](https://github.com/Ayushmore1214/kube-why/actions/workflows/ci.yml/badge.svg)](https://github.com/Ayushmore1214/kube-why/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/Ayushmore1214/kube-why)](https://github.com/Ayushmore1214/kube-why/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Ayushmore1214/kube-why)](https://goreportcard.com/report/github.com/Ayushmore1214/kube-why)
+[![License](https://img.shields.io/github/license/Ayushmore1214/kube-why)](LICENSE)
+
 A command-line reference for cloud-native errors, Kubernetes, Docker, Helm,
 and growing. You hit `CrashLoopBackOff`, you run `kube-why crashloopbackoff`,
 you get what it means, why it usually happens, and how to check and fix it.
@@ -76,8 +81,13 @@ kube-why <error>          # what it means, why it happens, how to fix it
 kube-why list [pack]       # everything currently covered, optionally one pack
 kube-why random            # a random one, for when you're bored or teaching
 kube-why lint <file>       # check a YAML file's syntax before you apply it
+kube-why completion <shell> # print a completion script (bash, zsh, fish)
 <cmd> | kube-why           # auto-detect the error from piped command output
 ```
+
+Add `--json` to a lookup, `list`, `random`, or `lint` for machine-readable
+output instead of formatted text, for scripts, CI, or chatbots that want to
+consume this instead of a person reading it in a terminal.
 
 Lookups are forgiving. `kube-why crashloopbackoff`, `kube-why CrashLoopBackOff`,
 and `kube-why "crash loop backoff"` all resolve to the same entry, regardless

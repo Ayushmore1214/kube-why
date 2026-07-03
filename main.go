@@ -80,23 +80,27 @@ func main() {
 	args := os.Args[1:]
 
 	noColorFlag := false
+	jsonFlag := false
 	filtered := args[:0]
 	for _, a := range args {
-		if a == "--no-color" {
+		switch a {
+		case "--no-color":
 			noColorFlag = true
-			continue
+		case "--json":
+			jsonFlag = true
+		default:
+			filtered = append(filtered, a)
 		}
-		filtered = append(filtered, a)
 	}
 	args = filtered
 
-	if colorShouldBeOff(noColorFlag) {
+	if colorShouldBeOff(noColorFlag) || jsonFlag {
 		disableColor()
 	}
 
 	if len(args) == 0 {
 		if isPiped(os.Stdin) {
-			scanPipedInput(entries, os.Stdin)
+			scanPipedInput(entries, os.Stdin, jsonFlag)
 			return
 		}
 		printUsage(entries)
@@ -113,23 +117,48 @@ func main() {
 		if len(args) > 1 {
 			packFilter = normalize(args[1])
 		}
-		printList(entries, packFilter)
+		if jsonFlag {
+			printListJSON(entries, packFilter)
+		} else {
+			printList(entries, packFilter)
+		}
 	case "random":
-		printEntry(entries[rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(entries))])
+		e := entries[rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(entries))]
+		if jsonFlag {
+			printEntryJSON(e)
+		} else {
+			printEntry(e)
+		}
 	case "lint":
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "kube-why: lint requires a file, e.g. kube-why lint deployment.yaml")
 			os.Exit(1)
 		}
-		runLint(args[1])
+		runLint(args[1], jsonFlag)
+	case "completion":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "kube-why: completion requires a shell, e.g. kube-why completion bash")
+			os.Exit(1)
+		}
+		printCompletion(args[1])
+	case "__candidates":
+		printCandidates(entries)
 	default:
 		term := normalize(strings.Join(args, " "))
 		if e := find(entries, term); e != nil {
-			printEntry(*e)
+			if jsonFlag {
+				printEntryJSON(*e)
+			} else {
+				printEntry(*e)
+			}
 			return
 		}
-		fmt.Printf("kube-why: no entry found for %q\n\n", strings.Join(args, " "))
 		suggestions := suggest(entries, term)
+		if jsonFlag {
+			printJSONError(fmt.Sprintf("no entry found for %q", strings.Join(args, " ")), suggestions)
+			os.Exit(1)
+		}
+		fmt.Printf("kube-why: no entry found for %q\n\n", strings.Join(args, " "))
 		if len(suggestions) > 0 {
 			fmt.Println("Did you mean:")
 			for _, s := range suggestions {
@@ -287,10 +316,14 @@ func isPiped(f *os.File) bool {
 // format required. Aliases under 5 characters are skipped here (but still
 // work for direct lookups) since short tokens like "oom" risk matching
 // unrelated words in arbitrary pasted text.
-func scanPipedInput(entries []entry, r io.Reader) {
+func scanPipedInput(entries []entry, r io.Reader, jsonMode bool) {
 	data, err := io.ReadAll(r)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "kube-why: failed to read stdin:", err)
+		if jsonMode {
+			printJSONError(fmt.Sprintf("failed to read stdin: %v", err), nil)
+		} else {
+			fmt.Fprintln(os.Stderr, "kube-why: failed to read stdin:", err)
+		}
 		os.Exit(1)
 	}
 	// Use the same normalization as direct lookups (lowercase, strip spaces/
@@ -316,9 +349,22 @@ func scanPipedInput(entries []entry, r io.Reader) {
 	}
 
 	if len(matches) == 0 {
-		fmt.Println("kube-why: didn't recognize an error pattern in that input.")
-		fmt.Println("Run 'kube-why list' to see everything covered, or pass the error name directly.")
+		if jsonMode {
+			printJSONError("didn't recognize an error pattern in that input", nil)
+		} else {
+			fmt.Println("kube-why: didn't recognize an error pattern in that input.")
+			fmt.Println("Run 'kube-why list' to see everything covered, or pass the error name directly.")
+		}
 		os.Exit(1)
+	}
+
+	if jsonMode {
+		out := make([]jsonEntry, len(matches))
+		for i, e := range matches {
+			out[i] = toJSONEntry(e)
+		}
+		printJSON(out)
+		return
 	}
 
 	for i, e := range matches {
@@ -362,6 +408,7 @@ func printUsage(entries []entry) {
 	fmt.Println("  kube-why list [pack]      list everything covered, optionally for one pack")
 	fmt.Println("  kube-why random           print a random one")
 	fmt.Println("  kube-why lint <file>      check a YAML file's syntax before you apply it")
+	fmt.Println("  kube-why completion <shell>  print a completion script (bash, zsh, fish)")
 	fmt.Println("  <cmd> | kube-why          auto-detect the error from piped command output")
 	fmt.Println()
 	fmt.Println("Examples:")
@@ -370,8 +417,11 @@ func printUsage(entries []entry) {
 	fmt.Println("  kube-why \"image pull backoff\"")
 	fmt.Println("  kube-why lint deployment.yaml")
 	fmt.Println("  kube-why list docker")
+	fmt.Println("  kube-why oomkilled --json")
+	fmt.Println("  source <(kube-why completion zsh)")
 	fmt.Println()
 	fmt.Println("Add --no-color to disable colored output, or set NO_COLOR.")
+	fmt.Println("Add --json to any lookup, list, random, or lint for machine-readable output.")
 	fmt.Printf("\n%d entries across %d packs: %s. Run 'kube-why list' to see them all.\n",
 		len(entries), len(packNames(entries)), strings.Join(packNames(entries), ", "))
 }
