@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 //go:embed packs
@@ -382,17 +383,47 @@ func scanPipedInput(entries []entry, r io.Reader, jsonMode bool) {
 	}
 }
 
+// suggest offers "did you mean" candidates for a term that didn't resolve.
+// It checks slug and aliases as well as title, and matches whole words
+// rather than an arbitrary substring of everything smashed together.
+// normalize() deletes spaces/hyphens entirely, so a plain Contains check on
+// the normalized string lets an unrelated word's tail accidentally satisfy
+// the match, e.g. "ooml" -> prefix "oom" -> "too many open files" normalizes
+// to "toomanyopenfiles", which contains "oom" purely by coincidence of
+// where "too" and "many" happen to butt up against each other, nothing to
+// do with OOM. Checking whether any real word starts with the prefix
+// avoids that.
 func suggest(entries []entry, term string) []string {
+	if term == "" {
+		return nil
+	}
+	prefix := strings.ToLower(term[:min(3, len(term))])
+
 	var out []string
 	for _, e := range entries {
-		if strings.Contains(normalize(e.title), term[:min(3, len(term))]) {
-			out = append(out, e.title)
+		candidates := append([]string{e.slug, e.title}, e.aliases...)
+		for _, c := range candidates {
+			if hasWordWithPrefix(c, prefix) {
+				out = append(out, e.title)
+				break
+			}
+		}
+		if len(out) >= 5 {
+			break
 		}
 	}
-	if len(out) > 5 {
-		out = out[:5]
-	}
 	return out
+}
+
+func hasWordWithPrefix(s, prefix string) bool {
+	for _, word := range strings.FieldsFunc(s, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}) {
+		if strings.HasPrefix(strings.ToLower(word), prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func packNames(entries []entry) []string {

@@ -233,6 +233,39 @@ func TestCandidateNamesCoversEverySlugAndSubcommand(t *testing.T) {
 	}
 }
 
+// TestSuggestIgnoresCoincidentalSubstring is a regression test: normalize()
+// strips spaces, so a naive Contains check on the fully-smashed-together
+// title let "ooml" (prefix "oom") suggest "too many open files", purely
+// because "oom" happens to appear at the seam between "too" and "many"
+// once the space is gone, nothing to do with OOM.
+func TestSuggestIgnoresCoincidentalSubstring(t *testing.T) {
+	entries, err := loadEntries()
+	if err != nil {
+		t.Fatalf("loadEntries() failed: %v", err)
+	}
+	for _, title := range suggest(entries, "ooml") {
+		if strings.Contains(strings.ToLower(title), "too many") {
+			t.Errorf("suggest(%q) wrongly included %q via a coincidental substring match", "ooml", title)
+		}
+	}
+}
+
+func TestSuggestMatchesRealWordPrefix(t *testing.T) {
+	entries, err := loadEntries()
+	if err != nil {
+		t.Fatalf("loadEntries() failed: %v", err)
+	}
+	found := false
+	for _, title := range suggest(entries, "ooml") {
+		if title == "OOMKilled" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("suggest(%q) should still include %q, a genuine word-prefix match", "ooml", "OOMKilled")
+	}
+}
+
 func TestParseEntryParsesAliasesList(t *testing.T) {
 	raw := "---\ntitle: Example\naliases: [one, two, three]\ncategory: pod\n---\nbody text\n"
 	e, err := parseEntry("example", raw)

@@ -189,6 +189,48 @@ func TestGatherDockerIgnoresRunningContainers(t *testing.T) {
 	)
 }
 
+// TestGatherKubernetesHealthyPodsCanStillYieldMatchableEvents is a
+// regression test for a real inconsistency: an earlier version of runScan
+// gated whether matches were shown/counted toward the exit code on
+// unhealthy > 0 in text mode, but not in --json mode, so the identical scan
+// showed "All clear" (exit 0) to a person and a populated matches array to
+// a script. Warning events get appended to a source's text unconditionally
+// (a pod can recover and go back to Running while a real Warning event
+// about what just happened is still sitting in `kubectl get events`), so
+// unhealthy == 0 with non-empty, matchable text is a real, expected
+// combination, not a bug in gatherKubernetes, callers just have to treat
+// "matches found" as its own signal instead of assuming it implies
+// unhealthy > 0.
+func TestGatherKubernetesHealthyPodsCanStillYieldMatchableEvents(t *testing.T) {
+	withFakeCommands(t,
+		map[string]bool{"kubectl": true},
+		map[string]string{
+			"kubectl get pods":   "default web-1 1/1 Running 0 3d",
+			"kubectl get events": "default  22m  Warning  NodeNotReady  node/node-1  Node is not ready",
+			"kubectl get nodes":  "node-1 Ready",
+		},
+		nil,
+		func() {
+			s := gatherKubernetes()
+			if s.unhealthy != 0 {
+				t.Fatalf("unhealthy = %d, want 0, every pod is Running and the node is Ready", s.unhealthy)
+			}
+			if !strings.Contains(s.text, "NodeNotReady") {
+				t.Fatalf("expected gathered text to still contain the Warning event, got %q", s.text)
+			}
+
+			entries, err := loadEntries()
+			if err != nil {
+				t.Fatalf("loadEntries() failed: %v", err)
+			}
+			matches := matchEntries(entries, s.text)
+			if len(matches) == 0 {
+				t.Fatal("expected matchEntries to find NodeNotReady even though unhealthy == 0")
+			}
+		},
+	)
+}
+
 func TestMatchEntriesFindsKnownSignatureInArbitraryText(t *testing.T) {
 	entries, err := loadEntries()
 	if err != nil {

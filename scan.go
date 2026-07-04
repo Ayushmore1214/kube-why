@@ -243,6 +243,16 @@ func runScan(entries []entry, packFilter string, jsonMode bool) {
 
 	matches := matchEntries(entries, haystack.String())
 
+	// foundSomething, not just totalUnhealthy, decides both the exit code
+	// and what gets shown: the events text kubectl returns can contain a
+	// real match (a Warning event from a container that OOMKilled and has
+	// since restarted cleanly, say) even when the pod/node counts that
+	// drive totalUnhealthy are back to zero. An earlier version gated
+	// matches on totalUnhealthy in text mode but not in --json mode, so
+	// the exact same scan showed "All clear" to a person and a non-empty
+	// matches array to a script. Both modes use this one condition now.
+	foundSomething := totalUnhealthy > 0 || len(matches) > 0
+
 	if jsonMode {
 		printJSON(struct {
 			Sources   []scanSourceJSON `json:"sources"`
@@ -253,7 +263,7 @@ func runScan(entries []entry, packFilter string, jsonMode bool) {
 			Unhealthy: totalUnhealthy,
 			Matches:   toJSONEntries(matches),
 		})
-		if totalUnhealthy > 0 {
+		if foundSomething {
 			os.Exit(1)
 		}
 		return
@@ -270,7 +280,7 @@ func runScan(entries []entry, packFilter string, jsonMode bool) {
 		}
 	}
 
-	if totalUnhealthy == 0 {
+	if !foundSomething {
 		fmt.Println("\nAll clear.")
 		return
 	}
