@@ -1,0 +1,28 @@
+name: first interaction
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  greet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/first-interaction@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          issue-message: >
+            Thanks for opening your first issue here! If this is an error you'd
+            like to write up yourself, the whole process is one markdown file,
+            see [CONTRIBUTING.md](https://github.com/Ayushmore1214/kube-why/blob/main/CONTRIBUTING.md).
+          pr-message: >
+            Thanks for your first PR to kube-why! A maintainer will take a look
+            soon. If you haven't already, the checklist in the PR template and
+            [CONTRIBUTING.md](https://github.com/Ayushmore1214/kube-why/blob/main/CONTRIBUTING.md)
+            cover what makes a good entry.

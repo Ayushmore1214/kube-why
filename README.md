@@ -190,11 +190,25 @@ open an issue, that's just as useful.
 Everyone participating is expected to follow the
 [Code of Conduct](CODE_OF_CONDUCT.md).
 
+### Where to start
+
+Not sure what to work on? These are scoped and waiting:
+
+- [`good first issue`](https://github.com/Ayushmore1214/kube-why/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) — a single missing entry, real error string included, no engine knowledge needed.
+- [`help wanted`](https://github.com/Ayushmore1214/kube-why/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) — bigger units of work: a new pack, or a change to the lookup engine itself.
+
 ### Contributors
 
-<a href="https://github.com/Ayushmore1214/kube-why/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Ayushmore1214/kube-why" alt="Contributors to kube-why" />
-</a>
+Everyone who's opened a merged PR, thank you:
+
+<!-- CONTRIBUTORS:START -->
+<table><tr>
+<td align="center"><a href="https://github.com/Ayushmore1214"><img src="https://avatars.githubusercontent.com/u/194600182?v=4&s=80" width="80" height="80" alt="Ayushmore1214"/><br /><sub><b>Ayushmore1214</b></sub></a></td>
+</tr></table>
+<!-- CONTRIBUTORS:END -->
+
+This list updates automatically on every push to `main` (see
+`.github/workflows/contributors.yml`).
 
 ## Roadmap
 

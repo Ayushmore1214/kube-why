@@ -1,0 +1,63 @@
+name: contributors
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-readme:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch contributors and rewrite README
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          block=$(gh api "repos/${{ github.repository }}/contributors?per_page=100" --paginate | jq -r '
+            [.[] | select(.type != "Bot")] as $people |
+            "<table><tr>\n" +
+            ([$people[] | "<td align=\"center\"><a href=\"\(.html_url)\"><img src=\"\(.avatar_url)&s=80\" width=\"80\" height=\"80\" alt=\"\(.login)\"/><br /><sub><b>\(.login)</b></sub></a></td>"]
+              | to_entries
+              | map(if (.key % 8 == 7) and (.key + 1 < ($people | length)) then .value + "\n</tr><tr>" else .value end)
+              | join("\n")
+            ) +
+            "\n</tr></table>"
+          ')
+
+          python3 - "$block" <<'PYEOF'
+          import re
+          import sys
+          import pathlib
+
+          block = sys.argv[1]
+          path = pathlib.Path("README.md")
+          text = path.read_text()
+          replacement = "<!-- CONTRIBUTORS:START -->\n" + block + "\n<!-- CONTRIBUTORS:END -->"
+          new_text = re.sub(
+              r"<!-- CONTRIBUTORS:START -->.*<!-- CONTRIBUTORS:END -->",
+              lambda _: replacement,
+              text,
+              flags=re.DOTALL,
+          )
+          path.write_text(new_text)
+          PYEOF
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- README.md; then
+            echo "README contributors table already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "docs: update contributors list [skip ci]"
+          git push
