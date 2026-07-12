@@ -42,3 +42,4 @@ each individual reason, read it as a checklist rather than a single cause.
 ## Related
 - Pending
 - FailedMount
+- Untolerated taint
